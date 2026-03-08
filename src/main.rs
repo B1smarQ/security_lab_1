@@ -39,9 +39,11 @@ fn main() -> io::Result<()> {
 
     println!();
     println!("Сравнение частот с табличной частотностью алфавита");
-    print_comparison_with_theoretical(&src_counts, src_total, language, "Исходный текст");
+    // Для исходного текста просто сравниваем с теорией
+    print_comparison_with_theoretical(&src_counts, src_total, language, "Исходный текст", false);
     println!();
-    print_comparison_with_theoretical(&enc_counts, enc_total, language, "Шифротекст");
+    // Для шифротекста дополнительно выводим наиболее вероятный оригинальный символ
+    print_comparison_with_theoretical(&enc_counts, enc_total, language, "Шифротекст", true);
 
     Ok(())
 }
@@ -153,6 +155,7 @@ fn print_comparison_with_theoretical(
     total: usize,
     lang: Language,
     title: &str,
+    show_probable_original: bool,
 ) {
     if total == 0 {
         println!("{}: нет букв.", title);
@@ -165,19 +168,81 @@ fn print_comparison_with_theoretical(
     };
 
     println!("{}", title);
-    println!("Буква | Наблюдаемость | Теоретическая | Разница");
-    println!("---------------------------------");
+    if show_probable_original {
+        println!("Буква | Набл.% | Теор.% | Разн.% | Вероятн. оригинал");
+        println!("----------------------------------------------------");
+    } else {
+        println!("Буква | Набл.% | Теор.% | Разн.%");
+        println!("---------------------------------");
+    }
+
+    let mapping = if show_probable_original {
+        Some(build_probable_mapping(counts, total, lang))
+    } else {
+        None
+    };
 
     for (i, ch) in alphabet.iter().enumerate() {
         let count = *counts.get(ch).unwrap_or(&0);
         let observed = (count as f64) * 100.0 / (total as f64);
         let expected = theoretical[i];
         let diff = observed - expected;
-        println!(
-            "{:>5} | {:>6.3} | {:>6.3} | {:+6.3}",
-            ch, observed, expected, diff
-        );
+        if let Some(ref map) = mapping {
+            let probable = map.get(ch).copied().unwrap_or(' ');
+            println!(
+                "{:>5} | {:>6.3} | {:>6.3} | {:+6.3} | {:>5}",
+                ch, observed, expected, diff, probable
+            );
+        } else {
+            println!(
+                "{:>5} | {:>6.3} | {:>6.3} | {:+6.3}",
+                ch, observed, expected, diff
+            );
+        }
     }
+}
+
+/// Строит отображение: символ шифротекста -> наиболее вероятный символ открытого текста
+/// по принципу рангов: самые частые в шифротексте сопоставляются с самыми частыми в теории.
+fn build_probable_mapping(
+    counts: &HashMap<char, usize>,
+    total: usize,
+    lang: Language,
+) -> HashMap<char, char> {
+    let (alphabet, theoretical) = match lang {
+        Language::English => get_english_theoretical_frequencies(),
+        Language::Russian => get_russian_theoretical_frequencies(),
+    };
+
+    let n = alphabet.len();
+
+    // Наблюдаемые частоты для каждой буквы алфавита
+    let mut observed: Vec<f64> = Vec::with_capacity(n);
+    for ch in &alphabet {
+        let count = *counts.get(ch).unwrap_or(&0);
+        let freq = if total > 0 {
+            (count as f64) * 100.0 / (total as f64)
+        } else {
+            0.0
+        };
+        observed.push(freq);
+    }
+
+    // Индексы, отсортированные по убыванию наблюдаемых частот
+    let mut idx_obs: Vec<usize> = (0..n).collect();
+    idx_obs.sort_by(|&i, &j| observed[j].partial_cmp(&observed[i]).unwrap());
+
+    // Индексы, отсортированные по убыванию теоретических частот
+    let mut idx_theor: Vec<usize> = (0..n).collect();
+    idx_theor.sort_by(|&i, &j| theoretical[j].partial_cmp(&theoretical[i]).unwrap());
+
+    let mut map = HashMap::new();
+    for k in 0..n {
+        let cipher_ch = alphabet[idx_obs[k]];
+        let plain_ch = alphabet[idx_theor[k]];
+        map.insert(cipher_ch, plain_ch);
+    }
+    map
 }
 
 fn get_english_theoretical_frequencies() -> (Vec<char>, Vec<f64>) {
