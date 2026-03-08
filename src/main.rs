@@ -202,8 +202,6 @@ fn print_comparison_with_theoretical(
     }
 }
 
-/// Строит отображение: символ шифротекста -> наиболее вероятный символ открытого текста
-/// по принципу рангов: самые частые в шифротексте сопоставляются с самыми частыми в теории.
 fn build_probable_mapping(
     counts: &HashMap<char, usize>,
     total: usize,
@@ -216,7 +214,6 @@ fn build_probable_mapping(
 
     let n = alphabet.len();
 
-    // Наблюдаемые частоты для каждой буквы алфавита
     let mut observed: Vec<f64> = Vec::with_capacity(n);
     for ch in &alphabet {
         let count = *counts.get(ch).unwrap_or(&0);
@@ -228,11 +225,9 @@ fn build_probable_mapping(
         observed.push(freq);
     }
 
-    // Индексы, отсортированные по убыванию наблюдаемых частот
     let mut idx_obs: Vec<usize> = (0..n).collect();
     idx_obs.sort_by(|&i, &j| observed[j].partial_cmp(&observed[i]).unwrap());
 
-    // Индексы, отсортированные по убыванию теоретических частот
     let mut idx_theor: Vec<usize> = (0..n).collect();
     idx_theor.sort_by(|&i, &j| theoretical[j].partial_cmp(&theoretical[i]).unwrap());
 
